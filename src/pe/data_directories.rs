@@ -59,9 +59,9 @@ impl TryFrom<usize> for DataDirectoryType {
             13 => Self::DelayImportDescriptor,
             14 => Self::ClrRuntimeHeader,
             _ => {
-                return Err(error::Error::Malformed(
-                    "Wrong data directory index number".into(),
-                ))
+                return Err(error::Error::Malformed(error::Malformed::General(
+                    "Wrong data directory index number",
+                )))
             }
         })
     }
@@ -102,10 +102,12 @@ impl DataDirectories {
     pub fn parse(bytes: &[u8], count: usize, offset: &mut usize) -> error::Result<Self> {
         let mut data_directories = [None; NUM_DATA_DIRECTORIES];
         if count > NUM_DATA_DIRECTORIES {
-            return Err(error::Error::Malformed(format!(
-                "data directory count ({}) is greater than maximum number of data directories ({})",
-                count, NUM_DATA_DIRECTORIES
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::PeDataDirectoryCountOutOfBounds {
+                    count,
+                    num_data_directories: NUM_DATA_DIRECTORIES,
+                },
+            ));
         }
         for dir in data_directories.iter_mut().take(count) {
             let dd = DataDirectory::parse(bytes, offset)?;

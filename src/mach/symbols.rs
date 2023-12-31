@@ -428,10 +428,9 @@ impl<'a> Symbols<'a> {
         ctx: container::Ctx,
     ) -> error::Result<Symbols<'a>> {
         // we need to normalize the strtab offset before we receive the truncated bytes in pread_with
-        let strtab = symtab
-            .stroff
-            .checked_sub(symtab.symoff)
-            .ok_or_else(|| error::Error::Malformed("invalid symbol table offset".into()))?;
+        let strtab = symtab.stroff.checked_sub(symtab.symoff).ok_or_else(|| {
+            error::Error::Malformed(error::Malformed::General("invalid symbol table offset"))
+        })?;
         bytes.pread_with(
             symtab.symoff as usize,
             SymbolsCtx {

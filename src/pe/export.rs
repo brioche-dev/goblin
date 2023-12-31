@@ -91,19 +91,17 @@ impl<'a> ExportData<'a> {
         let export_rva = dd.virtual_address as usize;
         let size = dd.size as usize;
         debug!("export_rva {:#x} size {:#}", export_rva, size);
-        let export_offset = utils::find_offset_or(
-            export_rva,
-            sections,
-            file_alignment,
-            opts,
-            &format!("cannot map export_rva ({:#x}) into offset", export_rva),
-        )?;
+        let export_offset = utils::find_offset(export_rva, sections, file_alignment, opts)
+            .ok_or_else(|| error::Malformed::PeInvalidVirtualAddressOffset {
+                name: "export",
+                virtual_address: dd.virtual_address,
+            })?;
         let export_directory_table =
             ExportDirectoryTable::parse(bytes, export_offset).map_err(|_| {
-                error::Error::Malformed(format!(
-                    "cannot parse export_directory_table (offset {:#x})",
-                    export_offset
-                ))
+                error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                    name: "export_directory_table",
+                    offset: export_offset,
+                })
             })?;
         let number_of_name_pointers = export_directory_table.number_of_name_pointers as usize;
         let address_table_entries = export_directory_table.address_table_entries as usize;
@@ -237,10 +235,9 @@ impl<'a> scroll::ctx::TryFromCtx<'a, scroll::Endian> for Reexport<'a> {
                     let ordinal =
                         rest.pread_with::<&str>(1, scroll::ctx::StrCtx::Length(len - 1))?;
                     let ordinal = ordinal.parse::<u32>().map_err(|_e| {
-                        error::Error::Malformed(format!(
-                            "Cannot parse reexport ordinal from {} bytes",
-                            bytes.len()
-                        ))
+                        error::Error::Malformed(error::Malformed::PeCannotParseReexportOrdinal {
+                            num_bytes: bytes.len(),
+                        })
                     })?;
                     return Ok((
                         Reexport::DLLOrdinal {
@@ -255,10 +252,11 @@ impl<'a> scroll::ctx::TryFromCtx<'a, scroll::Endian> for Reexport<'a> {
                 }
             }
         }
-        Err(error::Error::Malformed(format!(
-            "Reexport {:#} is malformed",
-            reexport
-        )))
+        Err(error::Error::Malformed(
+            error::Malformed::PeReexportMalformed {
+                reexport: reexport.into(),
+            },
+        ))
     }
 }
 
@@ -353,16 +351,14 @@ impl<'a, 'b> scroll::ctx::TryFromCtx<'a, ExportCtx<'b>> for Export<'a> {
                     }
                 }
             } else {
-                Err(error::Error::Malformed(format!(
-                    "cannot get RVA of export ordinal {}",
-                    ordinal
-                )))
+                Err(error::Error::Malformed(
+                    error::Malformed::PeCannotGetExportOrdinalRva { ordinal: *ordinal },
+                ))
             }
         } else {
-            Err(error::Error::Malformed(format!(
-                "cannot get ordinal of export name entry {}",
-                idx
-            )))
+            Err(error::Error::Malformed(
+                error::Malformed::PeCannotGetExportNameEntryOridnal { export: idx },
+            ))
         }
     }
 }

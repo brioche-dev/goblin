@@ -1,5 +1,4 @@
 use crate::error;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use scroll::Pread;
 
@@ -126,7 +125,7 @@ pub fn find_offset_or(
     msg: &str,
 ) -> error::Result<usize> {
     find_offset(rva, sections, file_alignment, opts)
-        .ok_or_else(|| error::Error::Malformed(msg.to_string()))
+        .ok_or_else(|| error::Error::Malformed(error::Malformed::GeneralString(msg.into())))
 }
 
 pub fn try_name<'a>(
@@ -138,10 +137,12 @@ pub fn try_name<'a>(
 ) -> error::Result<&'a str> {
     match find_offset(rva, sections, file_alignment, opts) {
         Some(offset) => Ok(bytes.pread::<&str>(offset)?),
-        None => Err(error::Error::Malformed(format!(
-            "Cannot find name from rva {:#x} in sections: {:?}",
-            rva, sections
-        ))),
+        None => Err(error::Error::Malformed(
+            error::Malformed::PeVirtualAddressNameNotFound {
+                virtual_address: rva as u32,
+                sections: sections.to_vec(),
+            },
+        )),
     }
 }
 
@@ -174,8 +175,12 @@ where
     T: scroll::ctx::TryFromCtx<'a, scroll::Endian, Error = scroll::Error>,
 {
     let rva = directory.virtual_address as usize;
-    let offset = find_offset(rva, sections, file_alignment, opts)
-        .ok_or_else(|| error::Error::Malformed(directory.virtual_address.to_string()))?;
+    let offset = find_offset(rva, sections, file_alignment, opts).ok_or_else(|| {
+        error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffset {
+            name: "data",
+            virtual_address: directory.virtual_address,
+        })
+    })?;
     let result: T = bytes.pread_with(offset, scroll::LE)?;
     Ok(result)
 }

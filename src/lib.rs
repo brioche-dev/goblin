@@ -310,7 +310,7 @@ if_everything! {
                     Hint::Unknown(magic) => Ok(Object::Unknown(magic)),
                 }
             } else {
-                Err(error::Error::Malformed(format!("Object is too small.")))
+                Err(error::Error::Malformed(error::Malformed::TooSmall))
             }
         }
     }

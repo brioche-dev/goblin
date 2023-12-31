@@ -420,8 +420,7 @@ if_alloc! {
                     let bytes = if filesz > 0 {
                         bytes
                             .pread_with::<&[u8]>(offset, filesz)
-                            .map_err(|_| crate::error::Error::Malformed(format!("Invalid PT_DYNAMIC size (offset {:#x}, filesz {:#x})",
-                                                               offset, filesz)))?
+                            .map_err(|_| crate::error::Error::Malformed(crate::error::Malformed::InvalidElfPtDynamicSize { offset, filesz }))?
                     } else {
                         &[]
                     };

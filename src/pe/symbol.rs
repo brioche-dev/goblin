@@ -219,7 +219,9 @@ impl Symbol {
     pub fn name<'a>(&'a self, strtab: &'a strtab::Strtab) -> error::Result<&'a str> {
         if let Some(offset) = self.name_offset() {
             strtab.get_at(offset as usize).ok_or_else(|| {
-                error::Error::Malformed(format!("Invalid Symbol name offset {:#x}", offset))
+                error::Error::Malformed(error::Malformed::PeInvlaidSymbolNameOffset {
+                    offset: offset as usize,
+                })
             })
         } else {
             Ok(self.name.pread(0)?)

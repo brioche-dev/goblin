@@ -490,10 +490,9 @@ impl ThreadCommand {
             // Assuming above is added, I don't believe apple ever ported mach-o the mach kernel
             // (and hence its binary format) to any other machines except the above,
             // but I would be happy to learn otherwise
-            _ => Err(error::Error::Malformed(format!(
-                "unable to find instruction pointer for cputype {:?}",
-                cputype
-            ))),
+            _ => Err(error::Error::Malformed(
+                error::Malformed::MachUnsupportedCpuType { cputype },
+            )),
         }
     }
 }
@@ -508,10 +507,9 @@ impl<'a> ctx::TryFromCtx<'a, Endian> for ThreadCommand {
         let count: u32 = bytes.pread_with(12, le)?;
 
         if count > 70 {
-            return Err(error::Error::Malformed(format!(
-                "thread command specifies {} longs for thread state but we handle only 70",
-                count
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::MachThreadStateTooLong { count },
+            ));
         }
 
         // get a byte slice of the thread state
@@ -519,11 +517,12 @@ impl<'a> ctx::TryFromCtx<'a, Endian> for ThreadCommand {
 
         // check the length
         if bytes.len() < 16 + thread_state_byte_length {
-            return Err(error::Error::Malformed(format!(
-                "thread command specifies {} bytes for thread state but has only {}",
-                thread_state_byte_length,
-                bytes.len()
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::MachThreadCommandTooLong {
+                    thread_state_byte_length,
+                    num_bytes: bytes.len(),
+                },
+            ));
         }
 
         let thread_state_bytes = &bytes[16..16 + thread_state_byte_length];
@@ -1023,10 +1022,9 @@ impl TryFrom<u32> for Platform {
             LC_VERSION_MIN_TVOS => Platform::Tvos,
             LC_VERSION_MIN_WATCHOS => Platform::Watchos,
             _ => {
-                return Err(error::Error::Malformed(format!(
-                    "unknown platform for load command: {:x}",
-                    cmd
-                )))
+                return Err(error::Error::Malformed(
+                    error::Malformed::MachUnknownPlatform { cmd },
+                ))
             }
         })
     }
@@ -1484,11 +1482,12 @@ impl<'a> ctx::TryFromCtx<'a, Endian> for CommandVariant {
         let size = lc.cmdsize as usize;
         //println!("offset {:#x} cmd: {:#x} size: {:?} ctx: {:?}", offset, lc.cmd, size, le);
         if size > bytes.len() {
-            return Err(error::Error::Malformed(format!(
-                "{} has size larger than remainder of binary: {:?}",
-                &lc,
-                bytes.len()
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::MachLoadCommandHeaderTooLong {
+                    header: lc.clone(),
+                    num_bytes: bytes.len(),
+                },
+            ));
         }
         match lc.cmd {
             LC_SEGMENT => {

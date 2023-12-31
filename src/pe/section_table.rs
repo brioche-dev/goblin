@@ -83,14 +83,18 @@ impl SectionTable {
 
     pub fn data<'a, 'b: 'a>(&'a self, pe_bytes: &'b [u8]) -> error::Result<Option<Cow<[u8]>>> {
         let section_start: usize = self.pointer_to_raw_data.try_into().map_err(|_| {
-            Error::Malformed(format!("Virtual address cannot fit in platform `usize`"))
+            Error::Malformed(error::Malformed::General(
+                "Virtual address cannot fit in platform `usize`",
+            ))
         })?;
 
         // assert!(self.virtual_size <= self.size_of_raw_data);
         // if vsize > size_of_raw_data, the section is zero padded.
         let section_end: usize = section_start
             + usize::try_from(self.size_of_raw_data).map_err(|_| {
-                Error::Malformed(format!("Virtual size cannot fit in platform `usize`"))
+                Error::Malformed(error::Malformed::General(
+                    "Virtual size cannot fit in platform `usize`",
+                ))
             })?;
 
         let original_bytes = pe_bytes.get(section_start..section_end).map(Cow::Borrowed);
@@ -113,15 +117,17 @@ impl SectionTable {
             let idx: usize = if self.name[1] == b'/' {
                 let b64idx = self.name.pread::<&str>(2)?;
                 base64_decode_string_entry(b64idx).map_err(|_| {
-                    Error::Malformed(format!(
-                        "Invalid indirect section name //{}: base64 decoding failed",
-                        b64idx
-                    ))
+                    Error::Malformed(error::Malformed::PeInvalidIndirectSectionNameBase64 {
+                        base64_index: b64idx.into(),
+                    })
                 })?
             } else {
                 let name = self.name.pread::<&str>(1)?;
                 name.parse().map_err(|err| {
-                    Error::Malformed(format!("Invalid indirect section name /{}: {}", name, err))
+                    Error::Malformed(error::Malformed::PeInvalidIndirectSectionNameInt {
+                        name: name.into(),
+                        err,
+                    })
                 })?
             };
             Ok(Some(idx))
@@ -172,10 +178,9 @@ impl SectionTable {
             }
             Ok(())
         } else {
-            Err(Error::Malformed(format!(
-                "Invalid section name offset: {}",
-                idx
-            )))
+            Err(Error::Malformed(
+                error::Malformed::PeInvalidSectionNameOffset { offset: idx },
+            ))
         }
     }
 

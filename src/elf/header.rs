@@ -1,3 +1,5 @@
+use crate::error::Malformed;
+
 include!("constants_header.rs");
 
 macro_rules! elf_header {
@@ -198,7 +200,6 @@ if_alloc! {
     use scroll::{ctx, Endian};
     use core::fmt;
     use crate::container::{Ctx, Container};
-    use alloc::string::ToString;
 
     #[derive(Copy, Clone, PartialEq)]
     /// An ELF header
@@ -232,7 +233,10 @@ if_alloc! {
             match self.e_ident[EI_CLASS] {
                 ELFCLASS32 => { Ok(Container::Little) },
                 ELFCLASS64 => { Ok(Container::Big) },
-                class => Err(Error::Malformed(format!("Invalid class in Header: {}", class)))
+                class => Err(Error::Malformed(Malformed::InvalidElfField {
+                    field: "EI_CLASS",
+                    value: class,
+                })),
             }
         }
         /// Returns the byte order this header specifies
@@ -241,7 +245,7 @@ if_alloc! {
             match self.e_ident[EI_DATA] {
                 ELFDATA2LSB => { Ok(scroll::LE) },
                 ELFDATA2MSB => { Ok(scroll::BE) },
-                class => Err(Error::Malformed(format!("Invalid endianness in Header: {}", class)))
+                class => Err(Error::Malformed(Malformed::InvalidElfField { field: "EI_DATA", value: class }))
             }
         }
         pub fn new(ctx: Ctx) -> Self {
@@ -335,7 +339,7 @@ if_alloc! {
         fn try_from_ctx(bytes: &'a [u8], _ctx: scroll::Endian) -> error::Result<(Self, usize)> {
             use scroll::Pread;
             if bytes.len() < SIZEOF_IDENT {
-                return Err(error::Error::Malformed("Too small".to_string()));
+                return Err(error::Error::Malformed(Malformed::TooSmall));
             }
             let ident: &[u8] = &bytes[..SIZEOF_IDENT];
             if &ident[0..SELFMAG] != ELFMAG {
@@ -351,7 +355,7 @@ if_alloc! {
                     Ok((Header::from(bytes.pread::<header64::Header>(0)?), header64::SIZEOF_EHDR))
                 },
                 _ => {
-                    Err(error::Error::Malformed(format!("invalid ELF class {:x}", class)))
+                    Err(error::Error::Malformed(Malformed::InvalidElfField { field: "EI_CLASS", value: class }))
                 }
             }
         }
@@ -456,7 +460,7 @@ macro_rules! elf_header_std_impl {
                         match elf_header.e_ident[EI_DATA] {
                             ELFDATA2LSB => scroll::LE,
                             ELFDATA2MSB => scroll::BE,
-                            d => return Err(Error::Malformed(format!("invalid ELF endianness DATA type {:x}", d)).into()),
+                            d => return Err(Error::Malformed(Malformed::InvalidElfField { field: "EI_DATA", value: d })),
                         };
                     elf_header.e_type =      bytes.gread_with(offset, endianness)?;
                     elf_header.e_machine =   bytes.gread_with(offset, endianness)?;
@@ -485,7 +489,9 @@ macro_rules! elf_header_std_impl {
                         match self.e_ident[EI_DATA] {
                             ELFDATA2LSB => scroll::LE,
                             ELFDATA2MSB => scroll::BE,
-                            d => return Err(Error::Malformed(format!("invalid ELF DATA type {:x}", d)).into()),
+                            d => return Err(Error::Malformed(Malformed::InvalidElfField {
+                                field: "EI_DATA",
+                                value: d })),
                         };
                     for i in 0..self.e_ident.len() {
                         bytes.gwrite(self.e_ident[i], offset)?;
@@ -530,7 +536,7 @@ macro_rules! elf_header_std_impl {
                         match elf_header.e_ident[EI_DATA] {
                             ELFDATA2LSB => scroll::LE,
                             ELFDATA2MSB => scroll::BE,
-                            d => return Err(Error::Malformed(format!("invalid ELF DATA type {:x}", d)).into()),
+                            d => return Err(Error::Malformed(Malformed::InvalidElfField { field: "EI_DATA", value: d })),
                         };
                     elf_header.e_type =      bytes.gread_with(offset, endianness)?;
                     elf_header.e_machine =   bytes.gread_with(offset, endianness)?;

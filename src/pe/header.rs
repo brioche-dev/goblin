@@ -57,13 +57,18 @@ impl DosHeader {
     pub fn parse(bytes: &[u8]) -> error::Result<Self> {
         let mut offset = 0;
         let signature = bytes.gread_with(&mut offset, scroll::LE).map_err(|_| {
-            error::Error::Malformed(format!("cannot parse DOS signature (offset {:#x})", 0))
+            error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                name: "DOS signature",
+                offset: 0,
+            })
         })?;
         if signature != DOS_MAGIC {
-            return Err(error::Error::Malformed(format!(
-                "DOS header is malformed (signature {:#x})",
-                signature
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::PeSignatureMalformed {
+                    name: "DOS header",
+                    signature: signature as usize,
+                },
+            ));
         }
 
         let bytes_on_last_page = bytes.gread_with(&mut offset, scroll::LE)?;
@@ -95,26 +100,28 @@ impl DosHeader {
         let pe_pointer = bytes
             .pread_with(PE_POINTER_OFFSET as usize, scroll::LE)
             .map_err(|_| {
-                error::Error::Malformed(format!(
-                    "cannot parse PE header pointer (offset {:#x})",
-                    PE_POINTER_OFFSET
-                ))
+                error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                    name: "PE header pointer",
+                    offset: PE_POINTER_OFFSET as usize,
+                })
             })?;
 
         let pe_signature: u32 =
             bytes
                 .pread_with(pe_pointer as usize, scroll::LE)
                 .map_err(|_| {
-                    error::Error::Malformed(format!(
-                        "cannot parse PE header signature (offset {:#x})",
-                        pe_pointer
-                    ))
+                    error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                        name: "PE header signature",
+                        offset: pe_pointer as usize,
+                    })
                 })?;
         if pe_signature != PE_MAGIC {
-            return Err(error::Error::Malformed(format!(
-                "PE header is malformed (signature {:#x})",
-                pe_signature
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::PeSignatureMalformed {
+                    name: "PE header",
+                    signature: pe_signature as usize,
+                },
+            ));
         }
 
         Ok(DosHeader {
@@ -308,14 +315,17 @@ impl Header {
     pub fn parse(bytes: &[u8]) -> error::Result<Self> {
         let dos_header = DosHeader::parse(&bytes)?;
         let dos_stub = bytes.pread(DOS_STUB_OFFSET as usize).map_err(|_| {
-            error::Error::Malformed(format!(
-                "cannot parse DOS stub (offset {:#x})",
-                DOS_STUB_OFFSET
-            ))
+            error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                name: "DOS stub",
+                offset: DOS_STUB_OFFSET as usize,
+            })
         })?;
         let mut offset = dos_header.pe_pointer as usize;
         let signature = bytes.gread_with(&mut offset, scroll::LE).map_err(|_| {
-            error::Error::Malformed(format!("cannot parse PE signature (offset {:#x})", offset))
+            error::Error::Malformed(error::Malformed::PeParseFailedAt {
+                name: "PE signature",
+                offset,
+            })
         })?;
         let coff_header = CoffHeader::parse(&bytes, &mut offset)?;
         let optional_header = if coff_header.size_of_optional_header > 0 {

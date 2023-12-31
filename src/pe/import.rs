@@ -270,10 +270,11 @@ impl<'a> SyntheticImportDirectoryEntry<'a> {
             opts,
         )
         .ok_or_else(|| {
-            error::Error::Malformed(format!(
-                "Cannot map import_address_table_rva {:#x} into offset for {}",
-                import_directory_entry.import_address_table_rva, name
-            ))
+            error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffsetFor {
+                name: "import_address_table",
+                virtual_address: import_directory_entry.import_address_table_rva,
+                section: name.into(),
+            })
         })?;
         let mut import_address_table = Vec::new();
         loop {
@@ -332,10 +333,11 @@ impl<'a> ImportData<'a> {
         let offset =
             &mut utils::find_offset(import_directory_table_rva, sections, file_alignment, opts)
                 .ok_or_else(|| {
-                    error::Error::Malformed(format!(
-                "Cannot create ImportData; cannot map import_directory_table_rva {:#x} into offset",
-                import_directory_table_rva
-            ))
+                    error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffsetFor {
+                        name: "import_directory_table",
+                        virtual_address: dd.virtual_address,
+                        section: "ImportData".into(),
+                    })
                 })?;
         debug!("import data offset {:#x}", offset);
         let mut import_data = Vec::new();

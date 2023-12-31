@@ -133,10 +133,9 @@ impl<'a> PE<'a> {
                     )
                 }
                 magic => {
-                    return Err(error::Error::Malformed(format!(
-                        "Unsupported header magic ({:#x})",
-                        magic
-                    )))
+                    return Err(error::Error::Malformed(
+                        error::Malformed::PeUnsupportedMagic { magic },
+                    ))
                 }
             };
 
@@ -304,17 +303,15 @@ impl<'a> PE<'a> {
 
         for section in &self.sections {
             let section_data = section.data(&self.bytes)?.ok_or_else(|| {
-                error::Error::Malformed(format!(
-                    "Section data `{}` is malformed",
-                    section.name().unwrap_or("unknown name")
-                ))
+                error::Error::Malformed(error::Malformed::PeSectionDataMalformed {
+                    section: section.name().unwrap_or("unknown name").into(),
+                })
             })?;
             let file_section_offset =
                 usize::try_from(section.pointer_to_raw_data).map_err(|_| {
-                    error::Error::Malformed(format!(
-                        "Section `{}`'s pointer to raw data does not fit in platform `usize`",
-                        section.name().unwrap_or("unknown name")
-                    ))
+                    error::Error::Malformed(error::Malformed::PeSectionDataPointerTooBig {
+                        section: section.name().unwrap_or("unknown name").into(),
+                    })
                 })?;
             let vsize: usize = section.virtual_size.try_into()?;
             let ondisk_size: usize = section.size_of_raw_data.try_into()?;
@@ -365,12 +362,11 @@ impl<'a> PE<'a> {
         bytes: &mut [u8],
         ctx: scroll::Endian,
     ) -> Result<usize, error::Error> {
-        let opt_header = self
-            .header
-            .optional_header
-            .ok_or(error::Error::Malformed(format!(
-                "This PE binary has no optional header; it is required to write certificates"
-            )))?;
+        let opt_header = self.header.optional_header.ok_or(error::Error::Malformed(
+            error::Malformed::General(
+                "This PE binary has no optional header; it is required to write certificates",
+            ),
+        ))?;
         let mut max_offset = 0;
 
         if let Some(certificate_directory) = opt_header.data_directories.get_certificate_table() {

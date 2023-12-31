@@ -5,7 +5,6 @@
 use crate::error;
 use scroll::{ctx, Pread, Pwrite};
 
-use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use super::utils::pad;
@@ -32,9 +31,9 @@ impl TryFrom<u16> for AttributeCertificateRevision {
                 AttributeCertificateRevision::Revision2_0
             }
             _ => {
-                return Err(error::Error::Malformed(
-                    "Invalid certificate attribute revision".to_string(),
-                ))
+                return Err(error::Error::Malformed(error::Malformed::General(
+                    "Invalid certificate attribute revision",
+                )))
             }
         })
     }
@@ -69,9 +68,9 @@ impl TryFrom<u16> for AttributeCertificateType {
                 AttributeCertificateType::TsStackSigned
             }
             _ => {
-                return Err(error::Error::Malformed(
-                    "Invalid attribute certificate type".to_string(),
-                ))
+                return Err(error::Error::Malformed(error::Malformed::General(
+                    "Invalid attribute certificate type",
+                )))
             }
         })
     }
@@ -103,9 +102,9 @@ impl<'a> AttributeCertificate<'a> {
         let header: AttributeCertificateHeader = bytes.gread_with(current_offset, scroll::LE)?;
         let cert_size = usize::try_from(header.length.saturating_sub(CERTIFICATE_DATA_OFFSET))
             .map_err(|_err| {
-                error::Error::Malformed(
-                    "Attribute certificate size do not fit in usize".to_string(),
-                )
+                error::Error::Malformed(error::Malformed::General(
+                    "Attribute certificate size do not fit in usize",
+                ))
             })?;
 
         if let Some(bytes) = bytes.get(*current_offset..(*current_offset + cert_size)) {
@@ -122,10 +121,9 @@ impl<'a> AttributeCertificate<'a> {
             *current_offset = (*current_offset + 7) & !7;
             Ok(attr)
         } else {
-            Err(error::Error::Malformed(format!(
-                "Unable to extract certificate. Probably cert_size:{} is malformed",
-                cert_size
-            )))
+            Err(error::Error::Malformed(
+                error::Malformed::PeMalformedCertificate { cert_size },
+            ))
         }
     }
 }
@@ -158,23 +156,27 @@ pub(crate) fn enumerate_certificates(
     table_size: u32,
 ) -> Result<CertificateDirectoryTable, error::Error> {
     let table_start_offset = usize::try_from(table_virtual_address).map_err(|_err| {
-        error::Error::Malformed("Certificate table RVA do not fit in a usize".to_string())
+        error::Error::Malformed(error::Malformed::General(
+            "Certificate table RVA do not fit in a usize",
+        ))
     })?;
     // Here, we do not want wrapping semantics as it means that a too big table size or table start
     // offset will provide table_end_offset such that table_end_offset < table_start_offset, which
     // is not desirable at all.
     let table_end_offset =
         table_start_offset.saturating_add(usize::try_from(table_size).map_err(|_err| {
-            error::Error::Malformed("Certificate table size do not fit in a usize".to_string())
+            error::Error::Malformed(error::Malformed::General(
+                "Certificate table size do not fit in a usize",
+            ))
         })?);
     let mut current_offset = table_start_offset;
     let mut attrs = vec![];
 
     // End offset cannot be further than the binary we have at hand.
     if table_end_offset > bytes.len() {
-        return Err(error::Error::Malformed(
-            "End of attribute certificates table is after the end of the PE binary".to_string(),
-        ));
+        return Err(error::Error::Malformed(error::Malformed::General(
+            "End of attribute certificates table is after the end of the PE binary",
+        )));
     }
 
     // This is guaranteed to terminate, either by a malformed error being returned

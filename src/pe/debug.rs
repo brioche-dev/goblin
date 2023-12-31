@@ -101,10 +101,10 @@ impl ImageDebugDirectory {
     ) -> error::Result<Self> {
         let rva = dd.virtual_address as usize;
         let offset = utils::find_offset(rva, sections, file_alignment, opts).ok_or_else(|| {
-            error::Error::Malformed(format!(
-                "Cannot map ImageDebugDirectory rva {:#x} into offset",
-                rva
-            ))
+            error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffset {
+                name: "ImageDebugDirectory",
+                virtual_address: dd.virtual_address,
+            })
         })?;
         let idd: Self = bytes.pread_with(offset, scroll::LE)?;
         Ok(idd)
@@ -152,10 +152,11 @@ impl<'a> CodeviewPDB70DebugInfo<'a> {
         let filename_length = idd.size_of_data as isize - 24;
         if filename_length < 0 {
             // the record is too short to be plausible
-            return Err(error::Error::Malformed(format!(
-                "ImageDebugDirectory size of data seems wrong: {:?}",
-                idd.size_of_data
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::PeInvalidImageDebugDirectoryDataSize {
+                    size_of_data: idd.size_of_data,
+                },
+            ));
         }
         let filename_length = filename_length as usize;
 
@@ -177,10 +178,9 @@ impl<'a> CodeviewPDB70DebugInfo<'a> {
                 filename,
             }))
         } else {
-            Err(error::Error::Malformed(format!(
-                "ImageDebugDirectory seems corrupted: {:?}",
-                idd
-            )))
+            Err(error::Error::Malformed(
+                error::Malformed::PeImageDebugDirectoryCorrupted { idd: idd.clone() },
+            ))
         }
     }
 }

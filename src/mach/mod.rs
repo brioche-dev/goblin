@@ -248,10 +248,7 @@ impl<'a> MachO<'a> {
                 .map(|s| s.vmaddr - s.fileoff)
                 .next()
                 .ok_or_else(|| {
-                    error::Error::Malformed(format!(
-                        "image specifies LC_MAIN offset {} but has no __TEXT segment",
-                        offset
-                    ))
+                    error::Error::Malformed(error::Malformed::MachLcMainNoText { offset })
                 })?;
 
             (base_address + offset, false)
@@ -343,10 +340,9 @@ pub fn peek_bytes(bytes: &[u8; 16]) -> error::Result<crate::Hint> {
                         is_64: Some(ctx.container.is_big()),
                     }))
                 } else {
-                    Err(error::Error::Malformed(format!(
-                        "Correct mach magic {:#x} does not have a matching parsing context!",
-                        magic
-                    )))
+                    Err(error::Error::Malformed(
+                        error::Malformed::MachNoParsingContext { magic },
+                    ))
                 }
             }
             fat::FAT_MAGIC => {
@@ -370,12 +366,12 @@ fn extract_multi_entry(bytes: &[u8]) -> error::Result<SingleArch> {
                 let archive = archive::Archive::parse(bytes)?;
                 Ok(SingleArch::Archive(archive))
             }
-            _ => Err(error::Error::Malformed(format!(
-                "multi-arch entry must be a Mach-O binary or an archive"
+            _ => Err(error::Error::Malformed(error::Malformed::General(
+                "multi-arch entry must be a Mach-O binary or an archive",
             ))),
         }
     } else {
-        Err(error::Error::Malformed(format!("Object is too small")))
+        Err(error::Error::Malformed(error::Malformed::TooSmall))
     }
 }
 
@@ -446,10 +442,12 @@ impl<'a> MultiArch<'a> {
     /// Try to get the Mach-o binary at `index`
     pub fn get(&self, index: usize) -> error::Result<SingleArch<'a>> {
         if index >= self.narches {
-            return Err(error::Error::Malformed(format!(
-                "Requested the {}-th binary, but there are only {} architectures in this container",
-                index, self.narches
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::MachBinaryIndexOutOfBounds {
+                    index,
+                    num_arches: self.narches,
+                },
+            ));
         }
         let offset = (index * fat::SIZEOF_FAT_ARCH) + self.start;
         let arch = self.data.pread_with::<fat::FatArch>(offset, scroll::BE)?;
@@ -504,7 +502,9 @@ impl<'a> Mach<'a> {
     pub fn parse(bytes: &'a [u8]) -> error::Result<Self> {
         let size = bytes.len();
         if size < 4 {
-            let error = error::Error::Malformed("size is smaller than a magical number".into());
+            let error = error::Error::Malformed(error::Malformed::General(
+                "size is smaller than a magical number",
+            ));
             return Err(error);
         }
         let magic = peek(&bytes, 0)?;

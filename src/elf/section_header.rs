@@ -475,15 +475,25 @@ if_alloc! {
             }
             let (end, overflow) = self.sh_offset.overflowing_add(self.sh_size);
             if overflow || end > size as u64 {
-                let message = format!("Section {} size ({}) + offset ({}) is out of bounds. Overflowed: {}",
-                    self.sh_name, self.sh_offset, self.sh_size, overflow);
-                return Err(error::Error::Malformed(message));
+                let malformed = error::Malformed::ElfSectionOutOfBounds {
+                    section: self.sh_name,
+                    size: self.sh_size,
+                    kind: "offset",
+                    value: self.sh_offset,
+                    overflow,
+                };
+                return Err(error::Error::Malformed(malformed));
             }
             let (_, overflow) = self.sh_addr.overflowing_add(self.sh_size);
             if overflow {
-                let message = format!("Section {} size ({}) + addr ({}) is out of bounds. Overflowed: {}",
-                    self.sh_name, self.sh_addr, self.sh_size, overflow);
-                return Err(error::Error::Malformed(message));
+                let malformed = error::Malformed::ElfSectionOutOfBounds {
+                    section: self.sh_name,
+                    size: self.sh_size,
+                    kind: "addr",
+                    value: self.sh_addr,
+                    overflow,
+                };
+                return Err(error::Error::Malformed(malformed));
             }
             Ok(())
         }

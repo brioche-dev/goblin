@@ -8,7 +8,7 @@
 
 use scroll::{Pread, Pwrite, SizeWith};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Malformed, Result};
 use crate::strtab;
 
 use alloc::collections::btree_map::BTreeMap;
@@ -80,10 +80,10 @@ impl MemberHeader {
             10,
         ) {
             Ok(file_size) => Ok(file_size),
-            Err(err) => Err(Error::Malformed(format!(
-                "{:?} Bad file_size in header: {:?}",
-                err, self
-            ))),
+            Err(err) => Err(Error::Malformed(Malformed::BadMemberHeaderSize {
+                err,
+                header: self.clone(),
+            })),
         }
     }
 }
@@ -297,10 +297,11 @@ impl<'a> Index<'a> {
 
             let string = match strtab.get_at(string_offset as usize) {
                 Some(result) => Ok(result),
-                None => Err(Error::Malformed(format!(
-                    "{} entry {} has string offset {}, which is out of bounds",
-                    BSD_SYMDEF_NAME, i, string_offset
-                ))),
+                None => Err(Error::Malformed(Malformed::SymdefEntryOutOfBounds {
+                    symdef: BSD_SYMDEF_NAME,
+                    entry: i,
+                    string_offset,
+                })),
             }?;
 
             indexes.push(archive_member);
@@ -384,25 +385,22 @@ impl<'a> NameIndex<'a> {
             Ok(idx) => {
                 let name = match self.strtab.get_at(idx + 1) {
                     Some(result) => Ok(result),
-                    None => Err(Error::Malformed(format!(
-                        "Name {} is out of range in archive NameIndex",
-                        name
-                    ))),
+                    None => Err(Error::Malformed(Malformed::NameIndexOutOfRange {
+                        name: name.to_string(),
+                    })),
                 }?;
 
                 if name != "" {
                     Ok(name.trim_end_matches('/'))
                 } else {
-                    Err(Error::Malformed(format!(
-                        "Could not find {:?} in index",
-                        name
-                    )))
+                    Err(Error::Malformed(Malformed::NameIndexNotFound {
+                        name: name.to_string(),
+                    }))
                 }
             }
-            Err(_) => Err(Error::Malformed(format!(
-                "Bad name index {:?} in index",
-                name
-            ))),
+            Err(_) => Err(Error::Malformed(Malformed::BadNameIndex {
+                name: name.to_string(),
+            })),
         }
     }
 }
@@ -473,19 +471,23 @@ impl<'a> Archive<'a> {
                         Index::parse_windows_linker_member(data)?
                     }
                     IndexType::BSD => {
-                        return Err(Error::Malformed("SysV index occurs after BSD index".into()))
+                        return Err(Error::Malformed(Malformed::General(
+                            "SysV index occurs after BSD index",
+                        )))
                     }
                     IndexType::Windows => {
-                        return Err(Error::Malformed(
-                            "More than two Windows Linker members".into(),
-                        ))
+                        return Err(Error::Malformed(Malformed::General(
+                            "More than two Windows Linker members",
+                        )))
                     }
                 }
             } else if member.bsd_name == Some(BSD_SYMDEF_NAME)
                 || member.bsd_name == Some(BSD_SYMDEF_SORTED_NAME)
             {
                 if index_type != IndexType::None {
-                    return Err(Error::Malformed("BSD index occurs after SysV index".into()));
+                    return Err(Error::Malformed(Malformed::General(
+                        "BSD index occurs after SysV index",
+                    )));
                 }
                 index_type = IndexType::BSD;
                 let data: &[u8] = buffer.pread_with(member.offset as usize, member.size())?;
@@ -520,10 +522,10 @@ impl<'a> Archive<'a> {
         let mut symbol_index: BTreeMap<&str, usize> = BTreeMap::new();
         for (member_offset, name) in index.symbol_indexes.iter().zip(index.strtab.iter()) {
             let member_index = *member_index_by_offset.get(member_offset).ok_or_else(|| {
-                Error::Malformed(format!(
-                    "Could not get member {:?} at offset: {}",
-                    name, member_offset
-                ))
+                Error::Malformed(Malformed::BadArchiveMemberOffset {
+                    name: name.to_string(),
+                    member_offset: *member_offset,
+                })
             })?;
             symbol_index.insert(&name, member_index);
         }
@@ -562,10 +564,9 @@ impl<'a> Archive<'a> {
             let bytes = buffer.pread_with(member.offset as usize, member.size())?;
             Ok(bytes)
         } else {
-            Err(Error::Malformed(format!(
-                "Cannot extract member {:?}",
-                member
-            )))
+            Err(Error::Malformed(Malformed::MissingArchiveMember {
+                member: member.to_string(),
+            }))
         }
     }
 

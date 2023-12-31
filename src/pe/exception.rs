@@ -365,8 +365,11 @@ impl<'a> TryFromCtx<'a, UnwindOpContext> for UnwindCode {
                     0 => u32::from(bytes.gread_with::<u16>(&mut read, scroll::LE)?) * 8,
                     1 => bytes.gread_with::<u32>(&mut read, scroll::LE)?,
                     i => {
-                        let msg = format!("invalid op info ({}) for UWOP_ALLOC_LARGE", i);
-                        return Err(error::Error::Malformed(msg));
+                        let malformed = error::Malformed::PeInvalidOpInfo {
+                            operation_info: i,
+                            operation_code: "UWOP_ALLOC_LARGE",
+                        };
+                        return Err(error::Error::Malformed(malformed));
                     }
                 };
                 UnwindOperation::Alloc(offset)
@@ -420,15 +423,18 @@ impl<'a> TryFromCtx<'a, UnwindOpContext> for UnwindCode {
                     0 => false,
                     1 => true,
                     i => {
-                        let msg = format!("invalid op info ({}) for UWOP_PUSH_MACHFRAME", i);
-                        return Err(error::Error::Malformed(msg));
+                        let malformed = error::Malformed::PeInvalidOpInfo {
+                            operation_info: i,
+                            operation_code: "UWOP_PUSH_MACHFRAME",
+                        };
+                        return Err(error::Error::Malformed(malformed));
                     }
                 };
                 UnwindOperation::PushMachineFrame(is_error)
             }
             op => {
-                let msg = format!("unknown unwind op code ({})", op);
-                return Err(error::Error::Malformed(msg));
+                let malformed = error::Malformed::PeUnknownUnwindOp { op };
+                return Err(error::Error::Malformed(malformed));
             }
         };
 
@@ -543,8 +549,8 @@ impl<'a> UnwindInfo<'a> {
         let flags = version_flags >> 3;
 
         if version < 1 || version > 2 {
-            let msg = format!("unsupported unwind code version ({})", version);
-            return Err(error::Error::Malformed(msg));
+            let malformed = error::Malformed::PeUnsupportedUnwindVersion { version };
+            return Err(error::Error::Malformed(malformed));
         }
 
         let size_of_prolog = bytes.gread_with::<u8>(&mut offset, scroll::LE)?;
@@ -693,10 +699,13 @@ impl<'a> ExceptionData<'a> {
                 msg: "invalid exception directory table size",
             }));
         }
-
         let rva = directory.virtual_address as usize;
+
         let offset = utils::find_offset(rva, sections, file_alignment, opts).ok_or_else(|| {
-            error::Error::Malformed(format!("cannot map exception_rva ({:#x}) into offset", rva))
+            error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffset {
+                name: "exception",
+                virtual_address: directory.virtual_address,
+            })
         })?;
 
         if offset % 4 != 0 {
@@ -801,7 +810,10 @@ impl<'a> ExceptionData<'a> {
         let rva = function.unwind_info_address as usize;
         let offset =
             utils::find_offset(rva, sections, self.file_alignment, opts).ok_or_else(|| {
-                error::Error::Malformed(format!("cannot map unwind rva ({:#x}) into offset", rva))
+                error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffset {
+                    name: "unwind",
+                    virtual_address: function.unwind_info_address,
+                })
             })?;
 
         UnwindInfo::parse(self.bytes, offset)
@@ -824,10 +836,10 @@ impl<'a> ExceptionData<'a> {
     ) -> error::Result<RuntimeFunction> {
         let offset =
             utils::find_offset(rva, sections, self.file_alignment, opts).ok_or_else(|| {
-                error::Error::Malformed(format!(
-                    "cannot map exception rva ({:#x}) into offset",
-                    rva
-                ))
+                error::Error::Malformed(error::Malformed::PeInvalidVirtualAddressOffset {
+                    name: "exception",
+                    virtual_address: rva as u32,
+                })
             })?;
 
         self.get_function_by_offset(offset)

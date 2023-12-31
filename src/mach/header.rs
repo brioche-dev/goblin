@@ -367,8 +367,9 @@ impl<'a> ctx::TryFromCtx<'a, container::Ctx> for Header {
     ) -> error::Result<(Self, usize)> {
         let size = bytes.len();
         if size < SIZEOF_HEADER_32 || size < SIZEOF_HEADER_64 {
-            let error =
-                error::Error::Malformed("bytes size is smaller than a Mach-o header".into());
+            let error = error::Error::Malformed(error::Malformed::General(
+                "bytes size is smaller than a Mach-o header".into(),
+            ));
             Err(error)
         } else {
             match container {

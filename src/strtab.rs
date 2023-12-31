@@ -69,13 +69,14 @@ impl<'a> Strtab<'a> {
     pub fn parse(bytes: &'a [u8], offset: usize, len: usize, delim: u8) -> error::Result<Self> {
         let (end, overflow) = offset.overflowing_add(len);
         if overflow || end > bytes.len() {
-            return Err(error::Error::Malformed(format!(
-                "Strtable size ({}) + offset ({}) is out of bounds for {} #bytes. Overflowed: {}",
-                len,
-                offset,
-                bytes.len(),
-                overflow
-            )));
+            return Err(error::Error::Malformed(
+                error::Malformed::StrtabOutOfBounds {
+                    size: len,
+                    offset,
+                    num_bytes: bytes.len(),
+                    overflow,
+                },
+            ));
         }
         let mut result = Self::from_slice_unparsed(bytes, offset, len, delim);
         let mut i = 0;
